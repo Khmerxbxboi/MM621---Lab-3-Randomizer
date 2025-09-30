@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lab 3: Randomizer · Bayon Edition</title>
+  <style>
+    :root{
+      --ink:#111; --bg:#0b0b0b; --brand:#06b6d4; --stage:#ffe66d; --panel:#ffffffcc;
+      --accent:#ff5722; --soft:#ffffff99;
+    }
+    *{ box-sizing:border-box }
+    html,body{ height:100% }
+    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, Helvetica, sans-serif; background:var(--bg); color:var(--ink) }
+
+    header{ position:sticky; top:0; z-index:10; backdrop-filter:saturate(1.2) blur(6px); background:linear-gradient(90deg, #000000e6, #00000066); color:#fff; padding:14px 18px; border-bottom:1px solid #ffffff22 }
+    header h1{ margin:0; font-size:clamp(18px,3.5vw,30px); letter-spacing:0.3px }
+    header .meta{ display:flex; gap:14px; align-items:center; margin-top:6px; font-size:12px; color:#ffffffcc }
+
+    main{ max-width:1200px; margin:18px auto 64px; padding:0 16px }
+
+    .stage-wrap{ position:relative; border-radius:14px; overflow:hidden; box-shadow:0 12px 40px #00000080; border:1px solid #ffffff1f }
+
+
+    .bayon-bg{
+      position:absolute; inset:0;
+      background:
+        radial-gradient(1200px 600px at var(--x,50%) var(--y,50%), #0000 0%, #0006 55%, #000c 100%),
+        conic-gradient(from var(--ang,0deg), #0b1728, #092235, #0f2a3f, #0f354a, #0b1728);
+      filter: saturate(1.05) contrast(1.05) brightness(0.9);
+      animation: hueShift 22s linear infinite;
+    }
+    @keyframes hueShift{
+      0%   { filter: hue-rotate(0deg) saturate(1.05) contrast(1.05) brightness(0.9); }
+      50%  { filter: hue-rotate(40deg) saturate(1.15) contrast(1.08) brightness(0.95); }
+      100% { filter: hue-rotate(0deg) saturate(1.05) contrast(1.05) brightness(0.9); }
+    }
+
+    .overlay-tint{ position:absolute; inset:0; background:transparent; pointer-events:none; transition:background 160ms ease }
+
+    .stage{ position:relative; min-height:520px; overflow:hidden; touch-action:none }
+
+    .dot{ position:absolute; width:26px; height:26px; border-radius:50%;
+          background:var(--accent); left:50%; top:50%; transform:translate(-50%,-50%);
+          transition: transform .08s ease, box-shadow .12s ease; box-shadow:0 4px 10px #00000060; mix-blend-mode:screen }
+    .dot.following{ transform: translate(-50%,-50%) scale(1.12) }
+
+    .particle{ position:absolute; pointer-events:none; will-change:transform, opacity; }
+    .p-circle{ border-radius:50% }
+    .p-square{ }
+    .p-triangle{ width:0; height:0; border-left:10px solid transparent; border-right:10px solid transparent; border-bottom:18px solid var(--pcolor, #fff) }
+    .p-star{ width:18px; aspect-ratio:1/1; clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); background:var(--pcolor, #fff) }
+
+    .trail{ position:absolute; width:6px; height:6px; border-radius:50%; background:#fff; opacity:.9; filter: blur(.6px); }
+
+    .panel{ position:absolute; right:16px; top:16px; z-index:5; background:var(--panel); color:#111; padding:12px; border-radius:12px; box-shadow:0 8px 24px #00000066; backdrop-filter: blur(8px) saturate(1.1) }
+    .panel h2{ margin:0 0 8px; font-size:14px; letter-spacing:.3px; text-transform:uppercase }
+    .panel .row{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; margin:8px 0 }
+    .panel label{ font-size:12px; color:#333 }
+    .panel input[type="range"]{ width:180px }
+    .panel .modes{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px }
+    .panel button{ border:0; background:#111; color:#fff; padding:6px 10px; border-radius:999px; cursor:pointer; font-size:12px }
+    .panel button[aria-pressed="true"]{ background:var(--brand) }
+    .panel .tiny{ background:#fff; color:#111; border:1px solid #00000020 }
+
+    .hud{ position:absolute; left:16px; bottom:16px; color:#fff; z-index:5; background:#00000066; padding:10px 12px; border-radius:10px; font-size:12px; backdrop-filter: blur(6px) }
+
+    footer{ max-width:1200px; margin:20px auto 40px; padding:0 16px; color:#ddd }
+    footer h3{ margin:28px 0 10px; font-size:16px; color:#fff }
+    footer a{ color:#9ee7ff; text-decoration:none }
+    footer a:hover{ text-decoration:underline }
+    footer ul{ margin:0; padding-left:18px }
+    footer li{ margin:6px 0 }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lab 3: Randomizer — Bayon Edition</h1>
+    <div class="meta">
+      <span>Inputs: click · drag · double-click · wheel · keys (1–4, C, B, Space, P)</span>
+      <span>Feedback: color/shape/physics changes, HUD, mode indicator</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="stage-wrap" aria-label="Interactive stage with animated gradient background">
+      <div class="bayon-bg" aria-hidden="true"></div>
+      <div class="overlay-tint" aria-hidden="true"></div>
+
+      <article id="stage" class="stage" role="application" aria-describedby="hud">
+        <div id="dot" class="dot" aria-hidden="true"></div>
+
+        <div class="panel" aria-label="Controls">
+          <h2>Randomizer</h2>
+          <div class="row"><label for="intensity">Chaos</label><input id="intensity" type="range" min="1" max="10" value="5"/></div>
+          <div class="row"><label for="hue">Hue Bias</label><input id="hue" type="range" min="0" max="360" value="30"/></div>
+          <div class="modes">
+            <button class="mode" data-mode="paint" aria-pressed="true">Paint</button>
+            <button class="mode" data-mode="bursts">Bursts</button>
+            <button class="mode" data-mode="orbiters">Orbiters</button>
+            <button class="mode" data-mode="fireflies">Fireflies</button>
+            <button id="clear" class="tiny" title="Clear (C)">Clear</button>
+          </div>
+        </div>
+
+        <div id="hud" class="hud"></div>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Built for the “Randomness” assignment. Background now uses a generative animated gradient (no external images).
+    </p>
+
+    <h3>References & Inspirations</h3>
+    <ul>
+      <li>Assignment brief (Randomness) & course notes</li>
+      <li><a href="https://archive.p5js.org/examples/" target="_blank" rel="noopener">p5.js – Interaction & drawing examples</a></li>
+      <li><a href="https://p5js.org/reference/" target="_blank" rel="noopener">p5.js Reference (events, input, color)</a></li>
+      <li><a href="https://thecodingtrain.com/tracks/the-nature-of-code-2" target="_blank" rel="noopener">The Coding Train — Nature of Code 2 (Dan Shiffman)</a></li>
+      <li><a href="https://thecodingtrain.com/challenges/" target="_blank" rel="noopener">The Coding Train — Coding Challenges (particle systems, forces)</a></li>
+      <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events" target="_blank" rel="noopener">MDN — Pointer Events</a></li>
+      <li><a href="https://developer.mozilla.org/en-US/docs/Web/CSS/gradient/conic-gradient" target="_blank" rel="noopener">MDN — CSS Conic Gradients</a></li>
+      <li><a href="https://generativeartistry.com/" target="_blank" rel="noopener">Generative Artistry — patterns & techniques</a></li>
+      <li><a href="https://tympanus.net/codrops/" target="_blank" rel="noopener">Codrops — UI experiments & motion ideas</a></li>
+    </ul>
+  </footer>
+
+  <script>
+    const stage = document.getElementById('stage');
+    const hud   = document.getElementById('hud');
+    const dot   = document.getElementById('dot');
+    const overlay = document.querySelector('.overlay-tint');
+    const bg = document.querySelector('.bayon-bg');
+
+ 
+    let pointer = { x: 0, y: 0 }, dotPos = { x: 0, y: 0 };
+    const ease = 0.18;
+
+  
+    const intensityEl = document.getElementById('intensity');
+    const hueEl = document.getElementById('hue');
+    let MODE = 'paint';
+    let PAUSED = false;
+
+  
+    const R = {
+      int(min, max){ return Math.floor(Math.random() * (max - min + 1)) + min; },
+      float(min, max){ return Math.random() * (max - min) + min; },
+      pick(arr){ return arr[Math.floor(Math.random()*arr.length)] },
+      colorBias(hbias){
+        const h = (hbias + R.int(-50, 50) + 360) % 360;
+        return `hsl(${h} ${R.int(60,90)}% ${R.int(45,65)}%)`;
+      }
+    };
+
+    function stageCoords(e){
+      const r = stage.getBoundingClientRect();
+      return { x:(e.clientX||e.touches?.[0]?.clientX)-r.left, y:(e.clientY||e.touches?.[0]?.clientY)-r.top };
+    }
+
+    function setHUD(text){ hud.textContent = text; }
+    function flashHUD(msg){ setHUD(msg); hud.style.outline = '1px solid #9ee7ff'; setTimeout(()=>hud.style.outline='none', 140); }
+
+  
+    function updateTint(x,y){
+   
+      bg.style.setProperty('--x', (x/stage.clientWidth*100)+'%');
+      bg.style.setProperty('--y', (y/stage.clientHeight*100)+'%');
+    
+      const ang = ((x/stage.clientWidth)*60 - 30);
+      bg.style.setProperty('--ang', ang+'deg');
+    }
+
+    stage.addEventListener('pointermove', (e)=>{
+      const {x,y} = stageCoords(e); pointer.x=x; pointer.y=y; dot.classList.add('following'); updateTint(x,y);
+    });
+
+    function animateFollower(){
+      if(!PAUSED){
+        dotPos.x += (pointer.x - dotPos.x) * ease;
+        dotPos.y += (pointer.y - dotPos.y) * ease;
+        dot.style.left = dotPos.x + 'px';
+        dot.style.top  = dotPos.y + 'px';
+      }
+      requestAnimationFrame(animateFollower);
+    }
+
+
+    const initRect = stage.getBoundingClientRect();
+    dotPos.x = initRect.width/2; dotPos.y = initRect.height/2; pointer.x = dotPos.x; pointer.y = dotPos.y; animateFollower();
+
+   
+    const particles = new Set();
+    class Particle{
+      constructor(opts={}){
+        this.x = opts.x || pointer.x;
+        this.y = opts.y || pointer.y;
+        this.vx = R.float(-1,1) * (opts.speed||1);
+        this.vy = R.float(-1,1) * (opts.speed||1);
+        this.life = opts.life || R.int(40,80);
+        this.size = opts.size || R.int(8,20);
+        this.shape = opts.shape || R.pick(['circle','square','star']);
+        this.el = document.createElement('div');
+        this.el.className = 'particle ' + (this.shape==='circle'?'p-circle':this.shape==='square'?'p-square':'p-star');
+        this.color = R.colorBias(+hueEl.value);
+        this.el.style.background = this.shape==='triangle'? 'transparent' : this.color;
+        if(this.shape==='triangle') this.el.style.setProperty('--pcolor', this.color);
+        this.el.style.width = this.shape==='triangle'? '0px' : this.size+'px';
+        this.el.style.height = this.shape==='triangle'? '0px' : this.size+'px';
+        this.el.style.left = (this.x - this.size/2)+'px';
+        this.el.style.top  = (this.y - this.size/2)+'px';
+        this.spin = R.float(-3,3);
+        this.g = opts.gravity ?? 0.02;
+        stage.appendChild(this.el);
+        particles.add(this);
+      }
+      step(){
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += this.g; // gravity
+        this.life--;
+        const rot = (this.life * this.spin);
+        this.el.style.transform = `translate(${this.x}px, ${this.y}px) translate(-50%, -50%) rotate(${rot}deg)`;
+        this.el.style.opacity = Math.max(this.life/80, 0);
+        if(this.life<=0){ this.destroy(); }
+      }
+      destroy(){ particles.delete(this); this.el.remove(); }
+    }
+
+    function burst(n=16, speed=2, at){
+      const origin = at || {x:pointer.x, y:pointer.y};
+      for(let i=0;i<n;i++) new Particle({ x:origin.x, y:origin.y, speed, size:R.int(8,18), life:R.int(45,85) });
+    }
+
+  
+    let paintInterval=null;
+    function leaveTrail(){
+      const t = document.createElement('div'); t.className='trail';
+      t.style.left = (pointer.x-3)+'px'; t.style.top=(pointer.y-3)+'px'; t.style.background = R.colorBias(+hueEl.value);
+      stage.appendChild(t);
+      const d = R.int(200, 800);
+      setTimeout(()=>t.remove(), d);
+    }
+
+ 
+    const modes = ['paint','bursts','orbiters','fireflies'];
+    let modeIndex = 0;
+
+    function setMode(name){
+      MODE = name; modeIndex = modes.indexOf(name);
+      document.querySelectorAll('.mode').forEach(b=> b.setAttribute('aria-pressed', String(b.dataset.mode===name)));
+      flashHUD(`Mode: ${name.toUpperCase()}`);
+    }
+
+  
+    const orbiters = [];
+    function makeOrbiter(){
+      const el = document.createElement('div');
+      el.className = 'particle p-circle';
+      const radius = R.int(6,10);
+      el.style.width = el.style.height = radius*2+'px';
+      el.style.background = R.colorBias(+hueEl.value);
+      stage.appendChild(el);
+      const O = { el, a:R.float(0,Math.PI*2), r:R.int(30,120), s:R.float(0.02,0.045) };
+      orbiters.push(O);
+    }
+    function stepOrbiters(){
+      const target = {x: pointer.x, y: pointer.y};
+      orbiters.forEach(o=>{
+        o.a += o.s;
+        const x = target.x + Math.cos(o.a)*o.r;
+        const y = target.y + Math.sin(o.a)*o.r;
+        o.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+      });
+    }
+
+  
+    const flies = [];
+    function makeFirefly(){
+      const el = document.createElement('div'); el.className='particle p-circle';
+      const s = R.int(5,9); el.style.width=el.style.height=s+'px'; el.style.background='#fff'; el.style.boxShadow='0 0 8px 2px #ffffffaa';
+      stage.appendChild(el);
+      const F={ el, x:R.int(0, stage.clientWidth), y:R.int(0, stage.clientHeight), vx:R.float(-0.8,0.8), vy:R.float(-0.8,0.8) };
+      flies.push(F);
+    }
+    function stepFlies(){
+      flies.forEach(f=>{
+        if(Math.random()<0.02){ f.vx = R.float(-0.8,0.8); f.vy = R.float(-0.8,0.8); }
+        f.x += f.vx; f.y += f.vy;
+        if(f.x<0||f.x>stage.clientWidth) f.vx*=-1;
+        if(f.y<0||f.y>stage.clientHeight) f.vy*=-1;
+        f.el.style.transform = `translate(${f.x}px, ${f.y}px) translate(-50%, -50%)`;
+      });
+    }
+
+    function tick(){
+      if(!PAUSED){
+        particles.forEach(p=>p.step());
+        if(MODE==='orbiters') stepOrbiters();
+        if(MODE==='fireflies') stepFlies();
+      }
+      requestAnimationFrame(tick);
+    }
+    tick();
+
+   
+    stage.addEventListener('click', (evt)=>{
+      const {x,y} = stageCoords(evt);
+      if(MODE==='bursts') burst(8 + +intensityEl.value*2, 1.5 + +intensityEl.value*0.2, {x,y});
+      else if(MODE==='paint') { for(let i=0;i<1+ +intensityEl.value/2;i++) new Particle({x,y, speed:R.float(0.6,1.8), gravity:0.01}); }
+      else if(MODE==='orbiters') { for(let i=0;i<1+Math.floor(+intensityEl.value/3); i++) makeOrbiter(); }
+      else if(MODE==='fireflies') { for(let i=0;i<1+Math.floor(+intensityEl.value/3); i++) makeFirefly(); }
+    });
+
+    stage.addEventListener('dblclick', (evt)=>{
+      const {x,y} = stageCoords(evt);
+      burst(18 + +intensityEl.value*3, 2.2 + +intensityEl.value*0.25, {x,y});
+      flashHUD('Mega Burst!');
+    });
+
+    let dragging=false;
+    stage.addEventListener('pointerdown', ()=>{ dragging=true; dot.classList.add('following'); if(MODE==='paint'){ paintInterval=setInterval(leaveTrail, 34); }});
+    stage.addEventListener('pointerup',   ()=>{ dragging=false; clearInterval(paintInterval); paintInterval=null; });
+    stage.addEventListener('pointercancel', ()=>{ dragging=false; clearInterval(paintInterval); paintInterval=null; });
+
+    stage.addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      hueEl.value = ( (+hueEl.value) + Math.sign(e.deltaY)*8 + 360 ) % 360;
+      intensityEl.value = Math.min(10, Math.max(1, (+intensityEl.value) + (e.deltaY>0?-1:1)));
+      flashHUD(`Hue ${hueEl.value} · Chaos ${intensityEl.value}`);
+    }, { passive:false });
+
+    window.addEventListener('keydown', (e)=>{
+      if(e.key===' '){ e.preventDefault(); setMode(modes[(modeIndex+1)%modes.length]); return; }
+      if(['1','2','3','4'].includes(e.key)){ setMode(modes[+e.key-1]); }
+      if(e.key.toLowerCase()==='c'){ clearStage(); flashHUD('Cleared'); }
+      if(e.key.toLowerCase()==='b'){ hueEl.value = ( (+hueEl.value)+R.int(40,120) )%360; flashHUD('Hue Shuffle'); }
+      if(e.key.toLowerCase()==='p'){ PAUSED=!PAUSED; flashHUD(PAUSED?'Paused':'Playing'); }
+    });
+
+    stage.addEventListener('contextmenu', e=> e.preventDefault());
+
+    document.querySelectorAll('.mode').forEach(btn=> btn.addEventListener('click', ()=> setMode(btn.dataset.mode)));
+    document.getElementById('clear').addEventListener('click', ()=>{ clearStage(); flashHUD('Cleared'); });
+
+    function clearStage(){
+      particles.forEach(p=>p.destroy());
+      orbiters.splice(0, orbiters.length).forEach(o=>o.el.remove());
+      flies.splice(0, flies.length).forEach(f=>f.el.remove());
+      stage.querySelectorAll('.trail').forEach(t=>t.remove());
+    }
+
+    
+    let seconds = 0; setInterval(()=>{
+      seconds++;
+
+      if(seconds%10===0){
+        const cx = R.int(40, stage.clientWidth-40);
+        const cy = R.int(40, stage.clientHeight-40);
+        burst(6 + R.int(0,6), 1.8, {x:cx, y:cy});
+      }
+
+      if(seconds%15===0 && !dragging){ setMode(modes[(modeIndex+1)%modes.length]); }
+    }, 1000);
+
+    setHUD('Click = spawn · Drag = paint · Double-click = mega burst · Wheel = hue/chaos · Keys: 1-4 modes, Space cycle, C clear, B hue shuffle, P pause');
+  </script>
+</body>
+</html>
